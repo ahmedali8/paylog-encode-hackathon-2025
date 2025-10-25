@@ -136,11 +136,23 @@ Be concise and output valid JSON only.
     }
 }
 
+async function getRecentCommits(owner: string, repo: string, limit = 5): Promise<string[]> {
+  const { data } = await octokit.repos.listCommits({
+    owner,
+    repo,
+    per_page: limit,  // how many to fetch
+  });
+
+  const shas = data.map(commit => commit.sha);
+  console.log(`📦 Found ${shas.length} recent commits:`, shas);
+  return shas;
+}
+
 (async () => {
     const input: EvaluateInput = {
         githubHandle: "kumailnaqvi354",
         repo: "marinade-finance-integration-task",
-        commits: ["4dc19c4", "fec5203", "3b0d1ed"],
+        commits: await getRecentCommits("kumailnaqvi354", "marinade-finance-integration-task", 3),
         prompt: "Implement and test Marinade staking integration using Anchor and add test cases.",
     };
 
