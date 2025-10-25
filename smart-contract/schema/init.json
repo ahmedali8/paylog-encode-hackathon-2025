@@ -1,0 +1,8 @@
+{
+  "project_id": "wlog-local",
+  "client": "37g8UWikDZRAH28aFanvsmeNnHNzCE6THWSepTm421jCacX5Qe",
+  "freelancer": "3J6TFXhdUXynz1JJtxdvU48vZiab23vgDFoELzxU7AERBZB1LF",
+  "oracle": "4MEeqe8aw4QeFQXdFToJb5y3u7sJ8rgAtTJyGNPwB3SR5eJcyS",
+  "amounts": ["100000000", "150000000"],
+  "plt_decimals": 8
+}

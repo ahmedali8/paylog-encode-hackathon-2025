@@ -11,6 +11,7 @@ authors = ["Ahmed Ali <imahmedalibhatti@gmail.com>"]
 default = ["std"]
 std = ["concordium-std/std"]
 bump_alloc = ["concordium-std/bump_alloc"]
+build-schema = ["concordium-std/build-schema"]
 
 [dependencies]
 concordium-std = { version = "10.0", default-features = false }

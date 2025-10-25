@@ -1,0 +1,5 @@
+{
+  "rust-analyzer.linkedProjects": ["./smart-contract/Cargo.toml"],
+  "rust-analyzer.procMacro.enable": true,
+  "rust-analyzer.cargo.buildScripts.enable": true
+}
