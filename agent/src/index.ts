@@ -1,58 +1,150 @@
-import express from "express";
-import { Webhooks, createNodeMiddleware } from "@octokit/webhooks";
+import axios from "axios";
 import { Octokit } from "@octokit/rest";
-import OpenAI from "openai";
-import dotenv from "dotenv";
-import crypto from "crypto";
+import * as dotenv from "dotenv";
 
 dotenv.config();
 
-// Provide a simple declaration so TypeScript recognizes the Node global `process`
-// without requiring project-wide type installation.
-declare const process: any;
+// -------------------- Interfaces --------------------
+interface GitCommitAuthor {
+    name?: string | null;
+    email?: string | null;
+    date?: string | null;
+}
 
-const app = express();
-const port = 3000;
+interface GitCommitInfo {
+    message: string;
+    author?: GitCommitAuthor | null;
+    committer?: GitCommitAuthor | null;
+}
 
-const webhooks = new Webhooks({
-  secret: process.env.GITHUB_WEBHOOK_SECRET!,
-});
+interface GitCommitFile {
+    filename: string;
+    patch?: string | null;
+}
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-const octokit = new Octokit();
+interface GitCommitResponse {
+    commit: GitCommitInfo;
+    files?: GitCommitFile[] | null;
+}
 
-webhooks.on("push", async ({ payload }) => {
-  const repo = payload.repository.full_name;
-  const base = payload.before;
-  const head = payload.after;
+interface EvaluateInput {
+    githubHandle: string;
+    repo: string;
+    commits: string[];
+    prompt: string;
+}
 
-  console.log(`🔔 Push event received for ${repo}`);
+interface EvaluationResult {
+    summary: string;
+    accuracyScore: number;
+    reasoning: string;
+}
 
-  if (!payload.repository.owner) {
-    console.error("Missing repository owner in webhook payload");
-    return;
+// -------------------- GitHub Setup --------------------
+const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
+
+// -------------------- Commit Fetch --------------------
+async function getCommitDetails(owner: string, repo: string, commitSha: string): Promise<GitCommitResponse> {
+    const { data } = await octokit.repos.getCommit({ owner, repo, ref: commitSha }) as { data: GitCommitResponse };
+
+    console.log("\n🔹 Fetching commit:", commitSha);
+    console.log("🧠 Message:", data.commit.message);
+    console.log("👤 Author:", data.commit.author?.name ?? data.commit.committer?.name ?? "Unknown");
+    console.log("📄 Files changed:");
+    (data.files ?? []).forEach((file: GitCommitFile) => {
+        console.log(`- ${file.filename}`);
+        if (file.patch) console.log(file.patch.slice(0, 150));
+    });
+
+    return data;
+}
+
+// -------------------- Diff Aggregation --------------------
+async function getDiffs(owner: string, repo: string, commits: string[]): Promise<string> {
+    const diffs: string[] = [];
+
+    for (const sha of commits) {
+        const data = await getCommitDetails(owner, repo, sha);
+        const diff = data.files?.map(f => f.patch).join("\n") || "";
+        diffs.push(diff);
+    }
+
+    return diffs.join("\n");
+}
+
+// -------------------- Gemini Evaluation --------------------
+async function evaluateTask(input: EvaluateInput): Promise<EvaluationResult> {
+    const { githubHandle, repo, commits, prompt } = input;
+    const diffs = await getDiffs(githubHandle, repo, commits);
+
+    console.log("\n🤖 Sending diff summary request to Gemini...");
+
+    const systemPrompt = `
+You are an autonomous code-reviewing AI agent.
+
+You will receive:
+1. A natural-language task description that defines the intended work.
+2. One or more Git commit diffs showing the actual implementation.
+
+Your job:
+- Summarize what was implemented in clear technical language.
+- Compare the actual changes to the intended task.
+- Return a JSON object with:
+  {
+    "summary": "what was done in code",
+    "alignment": "describe how closely it matches the intended task",
+    "accuracyScore": 0.0-1.0,
+    "reasoning": "short explanation of score"
   }
+Be concise and output valid JSON only.
+`;
 
-  const { data } = await octokit.repos.compareCommitsWithBasehead({
-    owner: payload.repository.owner.login ?? payload.repository.owner.name ?? "",
-    repo: payload.repository.name,
-    basehead: `${base}...${head}`,
-  });
+    const response = await axios.post(
+        `${process.env.AI_MODEL}key=${process.env.AI_MODEL_API_KEY}`,
+        {
+            contents: [
+                {
+                    role: "user",
+                    parts: [
+                        { text: `${systemPrompt}\n\nTask description: ${prompt}\n\nHere are the diffs:\n${diffs}` }
+                    ]
+                }
+            ]
+        },
+        {
+            headers: {
+                "Content-Type": "application/json",
+            }
+        }
+    );
 
-  const diff = data.files?.map(f => f.patch).join("\n") || "";
+    const text: string =
+        response.data?.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
 
-  const summary = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
-    messages: [{ role: "user", content: `Summarize this diff:\n${diff}` }],
-  });
+    try {
+        const jsonStart = text.indexOf("{");
+        const jsonEnd = text.lastIndexOf("}") + 1;
+        const result: EvaluationResult = JSON.parse(text.slice(jsonStart, jsonEnd));
+        return result;
+    } catch (err) {
+        console.error("⚠️ Could not parse Gemini output:", text);
+        return {
+            summary: "Parsing error",
+            accuracyScore: 0,
+            reasoning: "Model response invalid or malformed JSON.",
+        };
+    }
+}
 
-  const work_hash = crypto.createHash("sha256")
-    .update(diff)
-    .digest("hex");
+(async () => {
+    const input: EvaluateInput = {
+        githubHandle: "kumailnaqvi354",
+        repo: "marinade-finance-integration-task",
+        commits: ["4dc19c4", "fec5203", "3b0d1ed"],
+        prompt: "Implement and test Marinade staking integration using Anchor and add test cases.",
+    };
 
-  console.log("🧠 Summary:", summary.choices[0].message.content);
-  console.log("🔐 work_hash:", work_hash);
-});
-
-app.use("/webhook", createNodeMiddleware(webhooks));
-app.listen(port, () => console.log(`🚀 Agent running at http://localhost:${port}`));
+    const result = await evaluateTask(input);
+    console.log("\n✅ Final Evaluation Result:");
+    console.log(JSON.stringify(result, null, 2));
+})();
