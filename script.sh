@@ -11,10 +11,10 @@ cd ..
 
 # Step 2: Update contract with the new hash
 echo "📝 Updating contract with new work hash..."
-printf "y\n\n" | concordium-client contract update worklog_inst_2 \
+printf "y\n\n" | concordium-client contract update paylog_inst \
   --entrypoint requestRelease \
   --parameter-json smart-contract/schema/request.json \
-  --schema smart-contract/dist/worklog.schema.bin \
+  --schema smart-contract/dist/paylog.schema.bin \
   --sender oracle \
   --energy 1000000 \
   --grpc-ip 127.0.0.1 \

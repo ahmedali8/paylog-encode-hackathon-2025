@@ -1,4 +1,4 @@
-//! WorkLog Attestation Registry (PLT-native, no shared account)
+//! PayLog Attestation Registry (PLT-native, no shared account)
 //! -----------------------------------------------------------
 //! Problem:
 //!   PLTs (Protocol-Level Tokens) are *account-based* and transfers are
@@ -125,7 +125,7 @@ impl From<ParseError> for ContractError {
 
 /// Initialize state with participants and milestone amounts.
 /// NOTE: No tokens move in this contract; PLT payments happen off-chain by accounts.
-#[init(contract = "worklog", parameter = "InitParams")]
+#[init(contract = "paylog", parameter = "InitParams")]
 fn init(ctx: &InitContext, _sb: &mut StateBuilder) -> InitResult<State> {
     // Parse parameters (validated by schema).
     let p: InitParams = ctx.parameter_cursor().get()?;
@@ -169,7 +169,7 @@ pub struct RequestParam {
 
 /// Oracle-only: mark a milestone as ready-to-pay; store work hash & timestamp.
 #[receive(
-    contract = "worklog",
+    contract = "paylog",
     name = "requestRelease",
     parameter = "RequestParam",
     error = "ContractError",
@@ -232,7 +232,7 @@ pub struct ConfirmParam {
 
 /// Client-only: confirm the PLT payment and finalize attestation.
 #[receive(
-    contract = "worklog",
+    contract = "paylog",
     name = "confirmPayment",
     parameter = "ConfirmParam",
     error = "ContractError",
@@ -319,7 +319,7 @@ pub struct MilestoneView {
 
 /// Returns the milestone state (or `None` if out of range).
 #[receive(
-    contract = "worklog",
+    contract = "paylog",
     name = "viewMilestone",
     parameter = "ViewParam",
     return_value = "Option<MilestoneView>"
